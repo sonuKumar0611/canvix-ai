@@ -1554,7 +1554,7 @@ function InnerCanvas({
       setNodes((nds: any) => nds.concat(tempNode));
 
       // Validate file before upload
-      const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB limit for ElevenLabs
+      const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB upload limit; transcription uses first 25MB (OpenAI Whisper)
       
       if (file.size > MAX_FILE_SIZE) {
         // Remove the temporary node since upload won't proceed
@@ -1797,20 +1797,18 @@ function InnerCanvas({
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       try {
-        // The backend will automatically use ElevenLabs if available (supports 1GB)
-        // Skip audio extraction entirely - let ElevenLabs handle large files directly
-        // Always use direct transcription with ElevenLabs
+        // Backend uses OpenAI Whisper (first 25MB for Convex action; /api/transcribe has 25MB limit)
+        // Always use direct transcription
         
         if (fileSizeMB > 1024) {
-          // File is over 1GB - ElevenLabs limit
+          // File is over 1GB
           throw new Error(`File is too large for transcription (${fileSizeMB.toFixed(1)}MB). Maximum size is 1GB.`);
         }
         
         if (false) {
           // Dead code - audio extraction has been removed
-          // For large files, we'll extract audio (unless backend has ElevenLabs)
         } else {
-          // Client-side transcription with ElevenLabs
+          // Client-side path: call /api/transcribe (OpenAI Whisper)
           try {
             console.log("Starting client-side transcription for video:", video._id);
             
@@ -1848,10 +1846,9 @@ function InnerCanvas({
               }
             }
             
-            // Create FormData for ElevenLabs
+            // Create FormData for /api/transcribe (OpenAI Whisper)
             const formData = new FormData();
             formData.append("file", fileToTranscribe);
-            formData.append("model_id", "scribe_v1");
             
             // Get the Convex site URL - it should be in format https://xxxxx.convex.site
             const convexUrl = import.meta.env.VITE_CONVEX_URL;
@@ -1905,11 +1902,11 @@ function InnerCanvas({
             const transcriptionResult = await transcriptionResponse.json();
             console.log("Transcription result:", transcriptionResult);
             
-            // Check if ElevenLabs couldn't detect speech
-            if (transcriptionResult.text === "We couldn't transcribe the audio. The video might be silent or in an unsupported language.") {
+            // Check if no speech was detected (Whisper returns empty or missing text)
+            if (!transcriptionResult.text || transcriptionResult.text.trim().length === 0) {
               throw new Error("No speech detected. The video might be silent, have no audio track, or use an unsupported language.");
             }
-            
+
             // Update the video with transcription
             if (transcriptionResult.text && transcriptionResult.text.trim().length > 0) {
               await updateVideo({
@@ -2197,11 +2194,10 @@ function InnerCanvas({
             }
           }
           
-          // Create FormData for ElevenLabs
+          // Create FormData for /api/transcribe (OpenAI Whisper)
           const formData = new FormData();
           formData.append("file", fileToTranscribe);
-          formData.append("model_id", "scribe_v1");
-          
+
           // Get the Convex site URL - it should be in format https://xxxxx.convex.site
           const convexUrl = import.meta.env.VITE_CONVEX_URL;
           let siteUrl = '';
@@ -2251,11 +2247,11 @@ function InnerCanvas({
           
           const transcriptionResult = await transcriptionResponse.json();
           
-          // Check if ElevenLabs couldn't detect speech
-          if (transcriptionResult.text === "We couldn't transcribe the audio. The video might be silent or in an unsupported language.") {
+          // Check if no speech was detected (Whisper returns empty or missing text)
+          if (!transcriptionResult.text || transcriptionResult.text.trim().length === 0) {
             throw new Error("No speech detected. The video might be silent, have no audio track, or use an unsupported language.");
           }
-          
+
           // Update the video with transcription
           if (transcriptionResult.text && transcriptionResult.text.trim().length > 0) {
             await updateVideo({

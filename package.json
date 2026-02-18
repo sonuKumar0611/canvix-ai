@@ -16,7 +16,6 @@
     "@aws-sdk/s3-request-presigner": "^3.832.0",
     "@clerk/react-router": "^1.4.8",
     "@convex-dev/polar": "^0.4.5",
-    "@elevenlabs/elevenlabs-js": "^2.3.0",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@hookform/resolvers": "^5.1.1",

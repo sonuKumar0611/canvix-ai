@@ -92,15 +92,15 @@ http.route({
 });
 
 
-// Transcription proxy endpoint
+// Transcription proxy endpoint (OpenAI Whisper)
 http.route({
   path: "/api/transcribe",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    
+    const apiKey = process.env.OPENAI_API_KEY;
+
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "ElevenLabs API key not configured" }), {
+      return new Response(JSON.stringify({ error: "OpenAI API key not configured" }), {
         status: 500,
         headers: {
           "Content-Type": "application/json",
@@ -108,12 +108,9 @@ http.route({
         },
       });
     }
-    
+
     try {
-      // Get the form data from the request
       const formData = await request.formData();
-      
-      // Log file details
       const file = formData.get("file") as File;
       if (file) {
         console.log("📎 Transcription request:", {
@@ -122,61 +119,62 @@ http.route({
           fileType: file.type,
           fileSizeMB: (file.size / 1024 / 1024).toFixed(2),
         });
-        
-        // Check file size before processing
-        const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+
+        const MAX_SIZE = 25 * 1024 * 1024; // 25MB Whisper limit
         if (file.size > MAX_SIZE) {
-          return new Response(JSON.stringify({ 
-            error: "File size exceeds 20MB limit. Please use a smaller file or compress the audio.",
-            details: {
-              fileSize: file.size,
-              maxSize: MAX_SIZE,
-              fileSizeMB: (file.size / 1024 / 1024).toFixed(2),
-              maxSizeMB: 20
+          return new Response(
+            JSON.stringify({
+              error: "File size exceeds 25MB limit (OpenAI Whisper). Please use a smaller file or compress the audio.",
+              details: {
+                fileSize: file.size,
+                maxSize: MAX_SIZE,
+                fileSizeMB: (file.size / 1024 / 1024).toFixed(2),
+                maxSizeMB: 25,
+              },
+            }),
+            {
+              status: 413,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
             }
-          }), {
-            status: 413, // Payload Too Large
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-          });
+          );
         }
       }
-      
-      // Forward the request to ElevenLabs
-      const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+
+      const whisperFormData = new FormData();
+      whisperFormData.append("file", file);
+      whisperFormData.append("model", "whisper-1");
+
+      const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
         headers: {
-          "Xi-Api-Key": apiKey,
+          Authorization: `Bearer ${apiKey}`,
         },
-        body: formData,
+        body: whisperFormData,
       });
-      
-      // Get the response data
+
       const responseData = await response.text();
-      
-      // Log response for debugging
+
       if (!response.ok) {
-        console.error("❌ ElevenLabs error:", {
+        console.error("❌ OpenAI Whisper error:", {
           status: response.status,
           statusText: response.statusText,
           response: responseData,
         });
       } else {
-        console.log("✅ ElevenLabs transcription successful");
-        // Parse and check if it's the "no speech" response
+        console.log("✅ OpenAI Whisper transcription successful");
         try {
           const result = JSON.parse(responseData);
-          if (result.text === "" || result.text === "We couldn't transcribe the audio. The video might be silent or in an unsupported language.") {
+          if (!result.text || result.text.trim() === "") {
             console.warn("⚠️ No speech detected in the file");
           }
-        } catch (e) {
+        } catch {
           // Not JSON, that's okay
         }
       }
-      
-      // Return the response with CORS headers
+
       return new Response(responseData, {
         status: response.status,
         headers: {
@@ -186,7 +184,7 @@ http.route({
           "Access-Control-Allow-Headers": "Content-Type",
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Transcription proxy error:", error);
       return new Response(JSON.stringify({ error: "Failed to process transcription request" }), {
         status: 500,
